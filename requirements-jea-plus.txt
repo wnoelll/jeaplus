@@ -1,1 +1,2 @@
-pypsrp>=0.8.1
+# Tested compatibility window. See the CI matrix for exact release pairs.
+pypsrp>=0.8.1,<0.10

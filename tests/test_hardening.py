@@ -22,9 +22,7 @@ import jea_plus as J
 
 def _connection_args(**overrides):
     values = vars(
-        J.build_parser().parse_args(
-            ["server.example", "--ccache", "/tmp/test.ccache", "info"]
-        )
+        J.build_parser().parse_args(["server.example", "--ccache", "/tmp/test.ccache", "info"])
     )
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -237,9 +235,7 @@ def test_read_command_source_supports_file_and_stdin(tmp_path, monkeypatch):
     )
     assert J.read_command_source(file_args) == "Write-Output 'from file'"
 
-    monkeypatch.setattr(
-        sys, "stdin", type("Input", (), {"read": lambda self: "stdin"})()
-    )
+    monkeypatch.setattr(sys, "stdin", type("Input", (), {"read": lambda self: "stdin"})())
     stdin_args = argparse.Namespace(
         command_file=None,
         command_stdin=True,
@@ -347,12 +343,8 @@ def test_history_auto_tries_cmdlet_then_full_language_fallback():
 
 def test_transfer_scripts_use_literal_path_consistently():
     remote = "C:\\Temp\\artifact[1]*.bin"
-    assert "Set-Content -LiteralPath" in J._upload_chunk_script(
-        remote, b"abc", first=True
-    )
-    assert "Add-Content -LiteralPath" in J._upload_chunk_script(
-        remote, b"def", first=False
-    )
+    assert "Set-Content -LiteralPath" in J._upload_chunk_script(remote, b"abc", first=True)
+    assert "Add-Content -LiteralPath" in J._upload_chunk_script(remote, b"def", first=False)
     assert "Get-Content -LiteralPath" in J._download_script(remote, 1024)
 
 
@@ -377,9 +369,7 @@ def test_remote_size_parser_requires_machine_readable_marker():
         J.parse_remote_size(["Uploaded: foo (42 bytes)"])
 
 
-def test_upload_streams_local_file_and_commits_only_after_size_match(
-    tmp_path, monkeypatch
-):
+def test_upload_streams_local_file_and_commits_only_after_size_match(tmp_path, monkeypatch):
     local = tmp_path / "large.bin"
     local.write_bytes(b"0123456789")
     final = "C:\\Temp\\result[1].bin"
@@ -443,9 +433,7 @@ def test_upload_size_mismatch_never_replaces_destination(tmp_path, monkeypatch):
     assert any("Remove-Item" in operation for operation in calls)
 
 
-def test_download_writes_through_local_staging_and_preserves_mode(
-    tmp_path, monkeypatch
-):
+def test_download_writes_through_local_staging_and_preserves_mode(tmp_path, monkeypatch):
     destination = tmp_path / "artifact.bin"
     destination.write_bytes(b"old")
     args = _connection_args(
@@ -473,9 +461,7 @@ def test_download_writes_through_local_staging_and_preserves_mode(
     assert J._do_download(_Pool(), args, J.Logger(None)) == 0
     assert destination.read_bytes() == b"\x00\x01\x02\x03"
     assert stat.S_IMODE(destination.stat().st_mode) == 0o600
-    assert all(
-        "Get-Content -LiteralPath" in op or "JEAPLUS-SIZE:" in op for op in operations
-    )
+    assert all("Get-Content -LiteralPath" in op or "JEAPLUS-SIZE:" in op for op in operations)
 
 
 # ---------- safe shell recovery ---------------------------------------------
@@ -497,9 +483,7 @@ def _prepare_shell(monkeypatch, inputs, dispatcher):
     monkeypatch.setattr(J.time, "sleep", lambda _seconds: None)
 
 
-def test_shell_reconnects_but_does_not_replay_uncertain_command_by_default(
-    monkeypatch, capsys
-):
+def test_shell_reconnects_but_does_not_replay_uncertain_command_by_default(monkeypatch, capsys):
     calls = []
 
     def dispatch(_args, _pool, line, _logger):
@@ -577,12 +561,8 @@ def test_load_pipeline_document_from_file_and_stdin(tmp_path, monkeypatch):
 
 
 def test_transfer_cli_exposes_verification_policy():
-    upload = J.build_parser().parse_args(
-        ["dc", "upload", "--verify", "sha256", "local", "C:\\x"]
-    )
-    download = J.build_parser().parse_args(
-        ["dc", "download", "--verify", "none", "C:\\x", "local"]
-    )
+    upload = J.build_parser().parse_args(["dc", "upload", "--verify", "sha256", "local", "C:\\x"])
+    download = J.build_parser().parse_args(["dc", "download", "--verify", "none", "C:\\x", "local"])
     assert upload.verify == "sha256"
     assert download.verify == "none"
 

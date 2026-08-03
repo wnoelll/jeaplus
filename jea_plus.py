@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""
-jea_plus.py - small PSRP/WinRM client for JEA endpoints.
+"""JEA+ - a PSRP assessment client for restricted PowerShell endpoints.
 
-This is intentionally a wrapper around pypsrp. It gives you a friendlier CLI
-for Kerberos ccache/keytab auth, restricted endpoint names, quick enumeration,
-simple file movement, and an interactive loop.
+The script backend provides rich helpers for FullLanguage and
+ConstrainedLanguage sessions. The structured backend builds PSRP command
+pipelines without source text for conventional NoLanguage JEA endpoints.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import getpass
 import hashlib
 import importlib.metadata
@@ -130,10 +130,8 @@ class Logger:
                 raise OSError(f"Log path is not a regular file: {self.path}")
             # Existing transcripts may predate the secure-create behavior.
             # Tighten them too; transcript content regularly contains secrets.
-            try:
+            with contextlib.suppress(AttributeError, OSError):
                 os.fchmod(descriptor, 0o600)
-            except (AttributeError, OSError):  # pragma: no cover - Windows ACLs.
-                pass
             handle = os.fdopen(
                 descriptor,
                 "a",
@@ -200,16 +198,12 @@ def supported_kwargs(
     except (TypeError, ValueError):
         allowed = set(var_keyword_names)
         filtered = {
-            key: value
-            for key, value in kwargs.items()
-            if key in allowed and value is not None
+            key: value for key, value in kwargs.items() if key in allowed and value is not None
         }
-        ignored = [
-            key
-            for key, value in kwargs.items()
-            if value is not None and key not in allowed
+        ignored_on_unknown_signature = [
+            key for key, value in kwargs.items() if value is not None and key not in allowed
         ]
-        return filtered, ignored
+        return filtered, ignored_on_unknown_signature
 
     accepts_any = any(
         parameter.kind == inspect.Parameter.VAR_KEYWORD
@@ -239,9 +233,7 @@ def get_password(args: argparse.Namespace) -> str:
         try:
             return os.environ[args.password_env]
         except KeyError as exc:
-            raise SystemExit(
-                f"Environment variable not set: {args.password_env}"
-            ) from exc
+            raise SystemExit(f"Environment variable not set: {args.password_env}") from exc
     if args.ask_pass:
         return getpass.getpass("Password: ")
     if args.password is not None:
@@ -273,10 +265,7 @@ def build_wsman(args: argparse.Namespace):
     # gssapi falls back to GSS_C_NO_CREDENTIAL and uses the existing cache.
     if args.auth == "kerberos" and not password:
         if username and getattr(args, "verbose", False):
-            eprint(
-                f"[kerberos] dropping --username '{username}' "
-                "to honour KRB5CCNAME / keytab"
-            )
+            eprint(f"[kerberos] dropping --username '{username}' to honour KRB5CCNAME / keytab")
         username = None
 
     kwargs = {
@@ -322,9 +311,7 @@ def build_wsman(args: argparse.Namespace):
     )
 
     if ignored and args.verbose:
-        eprint(
-            "Ignoring options unsupported by this pypsrp version:", ", ".join(ignored)
-        )
+        eprint("Ignoring options unsupported by this pypsrp version:", ", ".join(ignored))
 
     return WSMan(**filtered)
 
@@ -543,9 +530,7 @@ def resolve_backend(
         None,
     )
     backend = (
-        "script"
-        if rc == 0 and mode is not None and mode.lower() != "nolanguage"
-        else "structured"
+        "script" if rc == 0 and mode is not None and mode.lower() != "nolanguage" else "structured"
     )
     args._resolved_backend = backend
     args._remote_language_mode = mode or "source probe rejected"
@@ -577,8 +562,7 @@ def open_pool(args: argparse.Namespace):
 
 def wrap_json(script: str, depth: int) -> str:
     return (
-        "$ErrorActionPreference = 'Stop'\n"
-        f"& {{\n{script}\n}} | ConvertTo-Json -Depth {int(depth)}"
+        f"$ErrorActionPreference = 'Stop'\n& {{\n{script}\n}} | ConvertTo-Json -Depth {int(depth)}"
     )
 
 
@@ -670,9 +654,7 @@ def parse_pipeline_document(document: object) -> list[CommandSpec]:
             raise ValueError(f"pipeline entry {index}.arguments must be an array")
         end_of_statement = entry.get("end_of_statement", False)
         if not isinstance(end_of_statement, bool):
-            raise ValueError(
-                f"pipeline entry {index}.end_of_statement must be a boolean"
-            )
+            raise ValueError(f"pipeline entry {index}.end_of_statement must be a boolean")
 
         specs.append(
             CommandSpec(
@@ -804,9 +786,7 @@ def run_batch(args: argparse.Namespace) -> int:
         raise SystemExit(f"Batch file not found: {path}")
     commands = [
         line.strip()
-        for line in path.read_text(
-            encoding=args.encoding, errors="replace"
-        ).splitlines()
+        for line in path.read_text(encoding=args.encoding, errors="replace").splitlines()
         if line.strip() and not line.strip().startswith("#")
     ]
     logger = Logger(args.log)
@@ -850,9 +830,7 @@ if ($PSSenderInfo) {
 """
 
 
-def make_commands_script(
-    pattern: str, command_types: tuple | None = ("Function", "Cmdlet")
-) -> str:
+def make_commands_script(pattern: str, command_types: tuple | None = ("Function", "Cmdlet")) -> str:
     # Select-Object's JEA proxy only allows a fixed property set; Source and
     # Version are excluded. ModuleName is the safe stand-in. Out-String
     # flattens Format-Table's internal record objects to text - without it
@@ -913,11 +891,7 @@ def _format_command_rows(output: Sequence[object]) -> list[str]:
         max(len(title), *(len(row[index]) for row in rows))
         for index, title in enumerate(("CommandType", "Name", "ModuleName"))
     ]
-    header = (
-        f"{'CommandType':<{widths[0]}}  "
-        f"{'Name':<{widths[1]}}  "
-        f"{'ModuleName':<{widths[2]}}"
-    )
+    header = f"{'CommandType':<{widths[0]}}  {'Name':<{widths[1]}}  {'ModuleName':<{widths[2]}}"
     separator = "  ".join("-" * width for width in widths)
     rendered = [header.rstrip(), separator.rstrip()]
     rendered.extend(
@@ -969,7 +943,10 @@ def make_history_script(remote_path: str | None, method: str = "auto") -> str:
     if remote_path:
         path_expr = ps_quote(remote_path)
     else:
-        path_expr = "Join-Path $env:APPDATA 'Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt'"
+        path_expr = (
+            "Join-Path $env:APPDATA "
+            "'Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt'"
+        )
 
     readers = {
         "cmdlet": "$lines = @(Get-Content -LiteralPath $h -ErrorAction Stop)",
@@ -1150,9 +1127,7 @@ def parse_remote_hash(output: Sequence[object]) -> str:
             candidate = text.partition(":")[2].strip().lower()
         else:
             candidate = str(ps_property(item, "Hash", "")).strip().lower()
-        if len(candidate) == 64 and all(
-            character in "0123456789abcdef" for character in candidate
-        ):
+        if len(candidate) == 64 and all(character in "0123456789abcdef" for character in candidate):
             return candidate
     raise ValueError("remote SHA-256 marker was not returned")
 
@@ -1491,10 +1466,8 @@ def _do_download(pool, args: argparse.Namespace, logger: Logger) -> int:
         return 1
     finally:
         if temporary_path is not None:
-            try:
+            with contextlib.suppress(OSError):
                 temporary_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
     suffix = f", sha256={local_hash}" if verify == "sha256" else ""
     emit(f"Downloaded: {local} ({downloaded} bytes{suffix})", logger=logger)
@@ -1542,11 +1515,17 @@ foreach ($p in ($cmd.Parameters.Values | Sort-Object Name)) {{
         $short = $tn.Substring($tn.LastIndexOf('.') + 1)
         if ($short -eq 'ParameterAttribute') {{ continue }}
         $detail = ''
-        if     ($a.ValidValues)              {{ $detail = "ValidValues={{$($a.ValidValues -join ', ')}}" }}
-        elseif ($a.RegexPattern)             {{ $detail = "Pattern=$($a.RegexPattern)" }}
-        elseif ($a.MinLength -ne $null)      {{ $detail = "Length=$($a.MinLength)..$($a.MaxLength)" }}
-        elseif ($a.MinRange -ne $null)       {{ $detail = "Range=$($a.MinRange)..$($a.MaxRange)" }}
-        elseif ($a.AliasNames)               {{ $detail = "Aliases=$($a.AliasNames -join ',')" }}
+        if ($a.ValidValues) {{
+            $detail = "ValidValues={{$($a.ValidValues -join ', ')}}"
+        }} elseif ($a.RegexPattern) {{
+            $detail = "Pattern=$($a.RegexPattern)"
+        }} elseif ($a.MinLength -ne $null) {{
+            $detail = "Length=$($a.MinLength)..$($a.MaxLength)"
+        }} elseif ($a.MinRange -ne $null) {{
+            $detail = "Range=$($a.MinRange)..$($a.MaxRange)"
+        }} elseif ($a.AliasNames) {{
+            $detail = "Aliases=$($a.AliasNames -join ',')"
+        }}
         if ($detail) {{ "    [$short] $detail" }} else {{ "    [$short]" }}
     }}
 }}
@@ -1559,10 +1538,9 @@ def _mapping_values(value: object) -> list[object]:
     adapted = ps_property(value, "adapted_properties")
     if isinstance(adapted, Mapping):
         return list(adapted.values())
-    try:
-        return list(value)  # type: ignore[arg-type]
-    except TypeError:
-        return []
+    if isinstance(value, Iterable) and not isinstance(value, (str, bytes, bytearray)):
+        return list(value)
+    return []
 
 
 def _attribute_name(attribute: object) -> str:
@@ -1607,14 +1585,9 @@ def _render_structured_proxy(command: object) -> list[str]:
             elif pattern:
                 detail = f"Pattern={pattern}"
             elif minimum_length is not None:
-                detail = (
-                    f"Length={minimum_length}.."
-                    f"{ps_property(attribute, 'MaxLength', '?')}"
-                )
+                detail = f"Length={minimum_length}..{ps_property(attribute, 'MaxLength', '?')}"
             elif minimum_range is not None:
-                detail = (
-                    f"Range={minimum_range}..{ps_property(attribute, 'MaxRange', '?')}"
-                )
+                detail = f"Range={minimum_range}..{ps_property(attribute, 'MaxRange', '?')}"
             elif aliases:
                 detail = "Aliases=" + ",".join(map(str, aliases))
             suffix = f" {detail}" if detail else ""
@@ -1728,9 +1701,7 @@ def run_definition(args: argparse.Namespace) -> int:
                 emit("--- Parameters ---", logger=logger)
                 for parameter in parameters:
                     parameter_name = ps_property(parameter, "Name", "<unknown>")
-                    parameter_type = ps_property(
-                        parameter, "ParameterType", "<unknown>"
-                    )
+                    parameter_type = ps_property(parameter, "ParameterType", "<unknown>")
                     type_name = ps_property(parameter_type, "FullName", parameter_type)
                     emit(f"{parameter_name}  [{type_name}]", logger=logger)
             return 0
@@ -1791,7 +1762,7 @@ def load_cmdlet_cache(args: argparse.Namespace, pool, logger: Logger) -> list[st
 
 def install_shell_completer(cmdlets: list[str]) -> None:
     try:
-        import readline  # noqa: WPS433 - optional, missing on bare Windows
+        import readline  # Optional and missing on bare Windows.
     except ImportError:
         return
 
@@ -1902,7 +1873,11 @@ def dispatch_shell_line(
         arguments: list[str] = []
         for token in parts[1:]:
             if "=" in token:
-                name, value = _name_value(token, option=":cmdlet")
+                try:
+                    name, value = _name_value(token, option=":cmdlet")
+                except SystemExit as exc:
+                    emit(str(exc), stderr=True, logger=logger)
+                    return 1
                 parameters.append((name, value))
             elif token.startswith("-") and len(token) > 1:
                 parameters.append((token[1:], None))
@@ -1935,7 +1910,7 @@ def dispatch_shell_line(
 
     if verb == ":commands":
         pattern = "*"
-        command_types = ("Function", "Cmdlet")
+        command_types: tuple[str, str] | None = ("Function", "Cmdlet")
         if rest.strip():
             parts = split_shell_args(rest)
             if "--all" in parts:
@@ -1944,15 +1919,15 @@ def dispatch_shell_line(
             if parts:
                 pattern = parts[0]
         if backend == "structured":
-            parameters: list[tuple[str, Any]] = [
+            structured_parameters: list[tuple[str, Any]] = [
                 ("Name", pattern),
                 ("ErrorAction", "SilentlyContinue"),
             ]
             if command_types:
-                parameters.append(("CommandType", list(command_types)))
+                structured_parameters.append(("CommandType", list(command_types)))
             rc, output = invoke_structured(
                 pool,
-                [CommandSpec("Get-Command", tuple(parameters))],
+                [CommandSpec("Get-Command", tuple(structured_parameters))],
                 logger=logger,
                 display=False,
                 raise_session=True,
@@ -2248,8 +2223,7 @@ def run_shell(args: argparse.Namespace) -> int:
             reconnect_attempts += 1
             if reconnect_attempts >= RECONNECT_MAX_ATTEMPTS:
                 emit(
-                    f"[connect-error] {exc} "
-                    f"(gave up after {reconnect_attempts} attempts)",
+                    f"[connect-error] {exc} (gave up after {reconnect_attempts} attempts)",
                     stderr=True,
                     logger=logger,
                 )
@@ -2277,15 +2251,9 @@ def run_download_with_pool(pool, args: argparse.Namespace, logger: Logger) -> in
 def add_connection_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("host", help="WinRM host, e.g. dc.example.local")
     parser.add_argument("-u", "--username", help="User/UPN, e.g. svc@EXAMPLE.LOCAL")
-    parser.add_argument(
-        "-p", "--password", help="Password. Defaults to an empty password."
-    )
-    parser.add_argument(
-        "--ask-pass", action="store_true", help="Prompt for the password."
-    )
-    parser.add_argument(
-        "--password-env", help="Read password from an environment variable."
-    )
+    parser.add_argument("-p", "--password", help="Password. Defaults to an empty password.")
+    parser.add_argument("--ask-pass", action="store_true", help="Prompt for the password.")
+    parser.add_argument("--password-env", help="Read password from an environment variable.")
     parser.add_argument(
         "-H",
         "--hash",
@@ -2330,17 +2298,11 @@ def add_connection_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ccache", help="Set KRB5CCNAME before connecting.")
     parser.add_argument("--keytab", help="Set KRB5_CLIENT_KTNAME before connecting.")
     parser.add_argument("--krb5-config", help="Set KRB5_CONFIG before connecting.")
-    parser.add_argument(
-        "--ssl", dest="ssl", action="store_true", help="Use HTTPS/5986."
-    )
-    parser.add_argument(
-        "--no-ssl", dest="ssl", action="store_false", help="Use HTTP/5985."
-    )
+    parser.add_argument("--ssl", dest="ssl", action="store_true", help="Use HTTPS/5986.")
+    parser.add_argument("--no-ssl", dest="ssl", action="store_false", help="Use HTTP/5985.")
     parser.set_defaults(ssl=False)
     parser.add_argument("--port", type=int, help="Override WinRM port.")
-    parser.add_argument(
-        "--path", default="wsman", help="WinRM URL path. Default: wsman."
-    )
+    parser.add_argument("--path", default="wsman", help="WinRM URL path. Default: wsman.")
     parser.add_argument(
         "--cert-validation",
         action="store_true",
@@ -2360,9 +2322,7 @@ def add_connection_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--hostname-override", help="Hostname override for negotiate auth if supported."
     )
-    parser.add_argument(
-        "--negotiate-service", help="SPN service name override if supported."
-    )
+    parser.add_argument("--negotiate-service", help="SPN service name override if supported.")
     parser.add_argument(
         "--certificate-pem",
         help="Client certificate PEM for certificate auth if supported.",
@@ -2380,9 +2340,7 @@ def add_connection_args(parser: argparse.ArgumentParser) -> None:
         default=20,
         help="WSMan operation timeout seconds.",
     )
-    parser.add_argument(
-        "--read-timeout", type=int, help="Read timeout seconds if supported."
-    )
+    parser.add_argument("--read-timeout", type=int, help="Read timeout seconds if supported.")
     parser.add_argument(
         "--reconnection-retries",
         type=int,
@@ -2395,31 +2353,22 @@ def add_connection_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--locale", default="en-US", help="WSMan locale.")
     parser.add_argument("--data-locale", help="WSMan data locale.")
     parser.add_argument("--log", help="Append commands and output to a local log file.")
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Verbose local output."
-    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose local output.")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "A pypsrp assessment client for ConstrainedLanguage and "
-            "NoLanguage JEA endpoints."
+            "A pypsrp assessment client for ConstrainedLanguage and NoLanguage JEA endpoints."
         )
     )
     parser.add_argument("--version", action="version", version=version_string())
     add_connection_args(parser)
     sub = parser.add_subparsers(dest="mode", required=True)
 
-    run_p = sub.add_parser(
-        "run", aliases=("exec", "x"), help="Run a PowerShell command."
-    )
-    run_p.add_argument(
-        "--json", action="store_true", help="Pipe output through ConvertTo-Json."
-    )
-    run_p.add_argument(
-        "--json-depth", type=int, default=4, help="ConvertTo-Json depth."
-    )
+    run_p = sub.add_parser("run", aliases=("exec", "x"), help="Run a PowerShell command.")
+    run_p.add_argument("--json", action="store_true", help="Pipe output through ConvertTo-Json.")
+    run_p.add_argument("--json-depth", type=int, default=4, help="ConvertTo-Json depth.")
     run_p.add_argument("--encoding", default="utf-8", help="Command-file encoding.")
     command_sources = run_p.add_mutually_exclusive_group()
     command_sources.add_argument(
@@ -2496,21 +2445,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     script_p = sub.add_parser("script", help="Run a local .ps1 file.")
     script_p.add_argument("--encoding", default="utf-8", help="Local script encoding.")
-    script_p.add_argument(
-        "--json", action="store_true", help="Pipe output through ConvertTo-Json."
-    )
-    script_p.add_argument(
-        "--json-depth", type=int, default=4, help="ConvertTo-Json depth."
-    )
+    script_p.add_argument("--json", action="store_true", help="Pipe output through ConvertTo-Json.")
+    script_p.add_argument("--json-depth", type=int, default=4, help="ConvertTo-Json depth.")
     script_p.add_argument("script_path")
     script_p.set_defaults(func=run_script)
 
-    batch_p = sub.add_parser(
-        "batch", help="Run one command per line from a local file."
-    )
-    batch_p.add_argument(
-        "--encoding", default="utf-8", help="Local batch file encoding."
-    )
+    batch_p = sub.add_parser("batch", help="Run one command per line from a local file.")
+    batch_p.add_argument("--encoding", default="utf-8", help="Local batch file encoding.")
     batch_p.add_argument(
         "--stop-on-error",
         action="store_true",
@@ -2525,7 +2466,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--chunk-size",
         type=int,
         default=UPLOAD_DEFAULT_CHUNK,
-        help="Upload chunk size in raw bytes (kept small to fit the WSMan envelope; the [byte[]]@(...) literal expands to roughly 3.5x).",
+        help=(
+            "Upload chunk size in raw bytes (kept small to fit the WSMan envelope; "
+            "the [byte[]]@(...) literal expands to roughly 3.5x)."
+        ),
     )
     shell_p.add_argument(
         "--chunk-bytes",
@@ -2547,22 +2491,16 @@ def build_parser() -> argparse.ArgumentParser:
         default="size",
         help="Verification for :upload/:download. Default: size.",
     )
-    shell_p.set_defaults(
-        func=run_shell, local_path=None, remote_path=None, progress=False
-    )
+    shell_p.set_defaults(func=run_shell, local_path=None, remote_path=None, progress=False)
 
-    info_p = sub.add_parser(
-        "info", help="Show identity, PS version, and language mode."
-    )
+    info_p = sub.add_parser("info", help="Show identity, PS version, and language mode.")
     info_p.set_defaults(func=run_info)
 
     commands_p = sub.add_parser(
         "commands",
         help="List commands visible inside the endpoint (default: Function+Cmdlet).",
     )
-    commands_p.add_argument(
-        "pattern", nargs="?", default="*", help="Get-Command pattern."
-    )
+    commands_p.add_argument("pattern", nargs="?", default="*", help="Get-Command pattern.")
     commands_p.add_argument(
         "--all", action="store_true", help="Include Aliases and Applications too."
     )
@@ -2573,26 +2511,18 @@ def build_parser() -> argparse.ArgumentParser:
         aliases=("def",),
         help="Print the cmdlet's Definition (parameter sets).",
     )
-    def_p.add_argument(
-        "name", help="Cmdlet or function name visible inside the endpoint."
-    )
+    def_p.add_argument("name", help="Cmdlet or function name visible inside the endpoint.")
     def_p.set_defaults(func=run_definition)
 
     proxy_p = sub.add_parser(
         "proxy",
         help="Print parameters the JEA proxy exposes + their validators (the escape-hunting view).",
     )
-    proxy_p.add_argument(
-        "name", help="Cmdlet or function name visible inside the endpoint."
-    )
+    proxy_p.add_argument("name", help="Cmdlet or function name visible inside the endpoint.")
     proxy_p.set_defaults(func=run_proxy)
 
-    history_p = sub.add_parser(
-        "history", help="Read PSReadLine history for the connected profile."
-    )
-    history_p.add_argument(
-        "--remote-path", help="Override remote ConsoleHost_history.txt path."
-    )
+    history_p = sub.add_parser("history", help="Read PSReadLine history for the connected profile.")
+    history_p.add_argument("--remote-path", help="Override remote ConsoleHost_history.txt path.")
     history_p.add_argument(
         "--method",
         choices=HISTORY_METHODS,
@@ -2609,11 +2539,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--chunk-size",
         type=int,
         default=UPLOAD_DEFAULT_CHUNK,
-        help="Upload chunk size in raw bytes (each chunk turns into a [byte[]]@(d1,d2,...) literal, roughly 3.5x the byte count).",
+        help=(
+            "Upload chunk size in raw bytes (each chunk turns into a "
+            "[byte[]]@(d1,d2,...) literal, roughly 3.5x the byte count)."
+        ),
     )
-    upload_p.add_argument(
-        "--progress", action="store_true", help="Print chunk progress."
-    )
+    upload_p.add_argument("--progress", action="store_true", help="Print chunk progress.")
     upload_p.add_argument(
         "--verify",
         choices=TRANSFER_VERIFY_CHOICES,
@@ -2624,9 +2555,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload_p.add_argument("remote_path")
     upload_p.set_defaults(func=run_upload)
 
-    download_p = sub.add_parser(
-        "download", help="Download a remote file to a local path."
-    )
+    download_p = sub.add_parser("download", help="Download a remote file to a local path.")
     download_p.add_argument(
         "--chunk-bytes",
         type=int,

@@ -174,7 +174,7 @@ def test_download_script_hex_encodes_per_chunk():
 
 
 def _ns(**kw):
-    base = dict(hash=None, password=None, password_env=None, ask_pass=False)
+    base = {"hash": None, "password": None, "password_env": None, "ask_pass": False}
     base.update(kw)
     return argparse.Namespace(**base)
 
@@ -345,7 +345,7 @@ def test_invoke_ps_refuses_oversized_script(monkeypatch):
 
 def test_invoke_ps_passes_under_envelope(monkeypatch):
     _patch_pypsrp(monkeypatch, raise_msg=None)
-    rc, lines = J.invoke_ps(
+    rc, _lines = J.invoke_ps(
         None,
         "Get-Process",
         wrapper="none",
@@ -358,5 +358,5 @@ def test_invoke_ps_no_envelope_cap_bypasses_check(monkeypatch):
     _patch_pypsrp(monkeypatch, raise_msg=None)
     # No max_envelope_size = pre-check is disabled.
     big = "x" * 200_000
-    rc, lines = J.invoke_ps(None, big, wrapper="none", max_envelope_size=None)
+    rc, _lines = J.invoke_ps(None, big, wrapper="none", max_envelope_size=None)
     assert rc == 0

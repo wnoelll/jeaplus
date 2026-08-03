@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }} / pypsrp ${{ matrix.pypsrp }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.10"
+            pypsrp: "0.8.1"
+          - python: "3.12"
+            pypsrp: "0.8.1"
+          - python: "3.12"
+            pypsrp: "0.9.1"
+          - python: "3.14"
+            pypsrp: "0.9.1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install test environment
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install "pypsrp==${{ matrix.pypsrp }}"
+      - name: Format
+        run: ruff format --check jea_plus.py tests
+      - name: Lint
+        run: ruff check jea_plus.py tests
+      - name: Type check
+        run: mypy jea_plus.py
+      - name: Tests and branch coverage
+        run: pytest --cov=jea_plus --cov-branch --cov-report=term-missing
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install pip-audit
+      - run: pip-audit -r requirements-jea-plus.txt
+
