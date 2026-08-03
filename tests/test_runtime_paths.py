@@ -878,6 +878,40 @@ def test_shell_no_uncertain_retry_eof_interrupt_and_connect_failure(monkeypatch,
     assert J.run_shell(shell_args()) == 1
 
 
+def test_shell_bounds_reconnects_when_post_connect_initialization_keeps_failing(
+    monkeypatch,
+):
+    monkeypatch.setattr(J, "open_pool", lambda _args: Pool())
+    cache_calls = []
+
+    def cache(*_args):
+        cache_calls.append(1)
+        if len(cache_calls) == 1:
+            return []
+        raise RuntimeError("cache initialization failed")
+
+    monkeypatch.setattr(J, "load_cmdlet_cache", cache)
+    monkeypatch.setattr(J, "install_shell_completer", lambda _items: None)
+    monkeypatch.setattr(builtins, "input", lambda _prompt: "Get-X")
+    monkeypatch.setattr(
+        J,
+        "dispatch_shell_line",
+        lambda *_args: (_ for _ in ()).throw(J.SessionExpired("lost")),
+    )
+    sleeps = []
+
+    def bounded_sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) > 2:
+            raise AssertionError("reconnect counter was reset before initialization")
+
+    monkeypatch.setattr(J.time, "sleep", bounded_sleep)
+
+    assert J.run_shell(shell_args()) == 1
+    assert len(cache_calls) == 4  # initial success, then three bounded failures
+    assert sleeps == [1.0, 2.0]
+
+
 def test_transfer_wrappers(monkeypatch):
     monkeypatch.setattr(J, "open_pool", lambda _args: Pool())
     monkeypatch.setattr(J, "_do_upload", lambda *_args: 3)
