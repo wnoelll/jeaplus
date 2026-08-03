@@ -277,6 +277,10 @@ def test_backend_resolution_explicit_cache_script_and_structured(monkeypatch, ca
     no_language = SimpleNamespace(backend="auto", max_envelope_size=1000, verbose=False)
     assert J.resolve_backend(no_language, Pool()) == "structured"
 
+    monkeypatch.setattr(J, "invoke_ps", lambda *_args, **_kwargs: (0, ["RestrictedLanguage"]))
+    restricted = SimpleNamespace(backend="auto", max_envelope_size=1000, verbose=False)
+    assert J.resolve_backend(restricted, Pool()) == "structured"
+
 
 def test_invoke_remote_open_pool_and_json_wrapper(monkeypatch):
     captured = {}
