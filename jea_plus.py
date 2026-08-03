@@ -109,6 +109,33 @@ def eprint(*parts: object) -> None:
     print(*parts, file=sys.stderr)
 
 
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected an integer: {value!r}") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be greater than zero")
+    return parsed
+
+
+def non_negative_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected an integer: {value!r}") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value must be zero or greater")
+    return parsed
+
+
+def tcp_port(value: str) -> int:
+    parsed = positive_int(value)
+    if parsed > 65535:
+        raise argparse.ArgumentTypeError("port must be between 1 and 65535")
+    return parsed
+
+
 class Logger:
     def __init__(self, path: str | None) -> None:
         self.path = Path(path).expanduser() if path else None
@@ -2305,7 +2332,7 @@ def add_connection_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ssl", dest="ssl", action="store_true", help="Use HTTPS/5986.")
     parser.add_argument("--no-ssl", dest="ssl", action="store_false", help="Use HTTP/5985.")
     parser.set_defaults(ssl=False)
-    parser.add_argument("--port", type=int, help="Override WinRM port.")
+    parser.add_argument("--port", type=tcp_port, help="Override WinRM port.")
     parser.add_argument("--path", default="wsman", help="WinRM URL path. Default: wsman.")
     parser.add_argument(
         "--cert-validation",
@@ -2336,23 +2363,31 @@ def add_connection_args(parser: argparse.ArgumentParser) -> None:
         help="Client certificate key PEM for certificate auth if supported.",
     )
     parser.add_argument(
-        "--connection-timeout", type=int, default=30, help="Connection timeout seconds."
+        "--connection-timeout",
+        type=positive_int,
+        default=30,
+        help="Connection timeout seconds.",
     )
     parser.add_argument(
         "--operation-timeout",
-        type=int,
+        type=positive_int,
         default=20,
         help="WSMan operation timeout seconds.",
     )
-    parser.add_argument("--read-timeout", type=int, help="Read timeout seconds if supported.")
+    parser.add_argument(
+        "--read-timeout", type=positive_int, help="Read timeout seconds if supported."
+    )
     parser.add_argument(
         "--reconnection-retries",
-        type=int,
+        type=non_negative_int,
         default=0,
         help="Reconnect retries if supported.",
     )
     parser.add_argument(
-        "--max-envelope-size", type=int, default=153600, help="WSMan envelope size."
+        "--max-envelope-size",
+        type=positive_int,
+        default=153600,
+        help="WSMan envelope size.",
     )
     parser.add_argument("--locale", default="en-US", help="WSMan locale.")
     parser.add_argument("--data-locale", help="WSMan data locale.")
@@ -2372,7 +2407,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_p = sub.add_parser("run", aliases=("exec", "x"), help="Run a PowerShell command.")
     run_p.add_argument("--json", action="store_true", help="Pipe output through ConvertTo-Json.")
-    run_p.add_argument("--json-depth", type=int, default=4, help="ConvertTo-Json depth.")
+    run_p.add_argument("--json-depth", type=positive_int, default=4, help="ConvertTo-Json depth.")
     run_p.add_argument("--encoding", default="utf-8", help="Command-file encoding.")
     command_sources = run_p.add_mutually_exclusive_group()
     command_sources.add_argument(
@@ -2450,7 +2485,9 @@ def build_parser() -> argparse.ArgumentParser:
     script_p = sub.add_parser("script", help="Run a local .ps1 file.")
     script_p.add_argument("--encoding", default="utf-8", help="Local script encoding.")
     script_p.add_argument("--json", action="store_true", help="Pipe output through ConvertTo-Json.")
-    script_p.add_argument("--json-depth", type=int, default=4, help="ConvertTo-Json depth.")
+    script_p.add_argument(
+        "--json-depth", type=positive_int, default=4, help="ConvertTo-Json depth."
+    )
     script_p.add_argument("script_path")
     script_p.set_defaults(func=run_script)
 
@@ -2468,7 +2505,7 @@ def build_parser() -> argparse.ArgumentParser:
     shell_p.add_argument("--encoding", default="utf-8", help="Encoding for :load.")
     shell_p.add_argument(
         "--chunk-size",
-        type=int,
+        type=positive_int,
         default=UPLOAD_DEFAULT_CHUNK,
         help=(
             "Upload chunk size in raw bytes (kept small to fit the WSMan envelope; "
@@ -2477,7 +2514,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     shell_p.add_argument(
         "--chunk-bytes",
-        type=int,
+        type=positive_int,
         default=DOWNLOAD_DEFAULT_CHUNK_BYTES,
         help="Download chunk size in bytes (Get-Content -ReadCount).",
     )
@@ -2541,7 +2578,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload_p = sub.add_parser("upload", help="Upload a local file to a remote path.")
     upload_p.add_argument(
         "--chunk-size",
-        type=int,
+        type=positive_int,
         default=UPLOAD_DEFAULT_CHUNK,
         help=(
             "Upload chunk size in raw bytes (each chunk turns into a "
@@ -2562,7 +2599,7 @@ def build_parser() -> argparse.ArgumentParser:
     download_p = sub.add_parser("download", help="Download a remote file to a local path.")
     download_p.add_argument(
         "--chunk-bytes",
-        type=int,
+        type=positive_int,
         default=DOWNLOAD_DEFAULT_CHUNK_BYTES,
         help="Download chunk size in bytes (Get-Content -ReadCount).",
     )
