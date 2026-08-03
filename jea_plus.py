@@ -2105,13 +2105,16 @@ def run_shell(args: argparse.Namespace) -> int:
     while True:
         try:
             with open_pool(args) as pool:
-                reconnect_attempts = 0  # reached the with body - pool is live
                 if getattr(args, "backend", "script") == "auto":
                     for attribute in ("_resolved_backend", "_remote_language_mode"):
                         if hasattr(args, attribute):
                             delattr(args, attribute)
                 cmdlets = load_cmdlet_cache(args, pool, logger)
                 install_shell_completer(cmdlets)
+                # Reset only after post-connect initialization succeeds. If
+                # cache/backend setup fails on every reopen, resetting before
+                # it would turn the bounded retry loop into an infinite loop.
+                reconnect_attempts = 0
                 if first_connect:
                     emit(
                         f"Connected shell ({len(cmdlets)} cmdlets cached). "
