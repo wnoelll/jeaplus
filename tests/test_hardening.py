@@ -573,3 +573,19 @@ def test_backend_cli_defaults_to_auto_and_accepts_structured():
         J.build_parser().parse_args(["dc", "--backend", "structured", "info"]).backend
         == "structured"
     )
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["dc", "--max-envelope-size", "0", "info"],
+        ["dc", "--operation-timeout", "-1", "info"],
+        ["dc", "--connection-timeout", "0", "info"],
+        ["dc", "--reconnection-retries", "-1", "info"],
+        ["dc", "upload", "--chunk-size", "0", "local", "remote"],
+        ["dc", "download", "--chunk-bytes", "-1", "remote", "local"],
+    ],
+)
+def test_cli_rejects_non_positive_sizes_and_invalid_retry_counts(argv):
+    with pytest.raises(SystemExit):
+        J.build_parser().parse_args(argv)
