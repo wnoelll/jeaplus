@@ -237,7 +237,9 @@ def test_read_command_source_supports_file_and_stdin(tmp_path, monkeypatch):
     )
     assert J.read_command_source(file_args) == "Write-Output 'from file'"
 
-    monkeypatch.setattr(sys, "stdin", type("Input", (), {"read": lambda self: "stdin"})())
+    monkeypatch.setattr(
+        sys, "stdin", type("Input", (), {"read": lambda self: "stdin"})()
+    )
     stdin_args = argparse.Namespace(
         command_file=None,
         command_stdin=True,
@@ -471,18 +473,16 @@ def test_download_writes_through_local_staging_and_preserves_mode(
     assert J._do_download(_Pool(), args, J.Logger(None)) == 0
     assert destination.read_bytes() == b"\x00\x01\x02\x03"
     assert stat.S_IMODE(destination.stat().st_mode) == 0o600
-    assert all("Get-Content -LiteralPath" in op or "JEAPLUS-SIZE:" in op for op in operations)
+    assert all(
+        "Get-Content -LiteralPath" in op or "JEAPLUS-SIZE:" in op for op in operations
+    )
 
 
 # ---------- safe shell recovery ---------------------------------------------
 
 
 def _shell_args(**overrides):
-    values = vars(
-        J.build_parser().parse_args(
-            ["dc", "--backend", "script", "shell"]
-        )
-    )
+    values = vars(J.build_parser().parse_args(["dc", "--backend", "script", "shell"]))
     values.update(overrides)
     return argparse.Namespace(**values)
 

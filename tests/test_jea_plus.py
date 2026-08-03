@@ -16,10 +16,10 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import jea_plus as J  # noqa: E402
-
+import jea_plus as J
 
 # ---------- ps_quote ---------------------------------------------------------
+
 
 def test_ps_quote_plain():
     assert J.ps_quote("hello") == "'hello'"
@@ -40,6 +40,7 @@ def test_ps_quote_dollar_passes_through():
 
 # ---------- apply_execution_wrapper ------------------------------------------
 
+
 def test_wrapper_none_passthrough():
     assert J.apply_execution_wrapper("Get-Process", "none") == "Get-Process"
 
@@ -58,29 +59,37 @@ def test_wrapper_unknown_raises():
 
 # ---------- session-error detection -----------------------------------------
 
-@pytest.mark.parametrize("msg", [
-    "Bad HTTP response Code: 400",
-    "Code: 401 Unauthorized",
-    "the WSMan service cannot process the request",
-    "shell with shellid foo not found",
-    "ticket EXPIRED",
-    "FORBIDDEN",
-])
+
+@pytest.mark.parametrize(
+    "msg",
+    [
+        "Bad HTTP response Code: 400",
+        "Code: 401 Unauthorized",
+        "the WSMan service cannot process the request",
+        "shell with shellid foo not found",
+        "ticket EXPIRED",
+        "FORBIDDEN",
+    ],
+)
 def test_session_error_matches(msg):
     assert J.is_session_error(msg)
 
 
-@pytest.mark.parametrize("msg", [
-    "term 'Get-Foo' is not recognized",
-    "divide by zero",
-    "deliberate-error from Write-Error",
-    "",
-])
+@pytest.mark.parametrize(
+    "msg",
+    [
+        "term 'Get-Foo' is not recognized",
+        "divide by zero",
+        "deliberate-error from Write-Error",
+        "",
+    ],
+)
 def test_session_error_misses(msg):
     assert not J.is_session_error(msg)
 
 
 # ---------- script generators -----------------------------------------------
+
 
 def test_definition_quotes_name():
     s = J.make_definition_script("It's-A-Cmdlet")
@@ -94,7 +103,9 @@ def test_proxy_quotes_name_and_iterates_attrs():
     assert "Parameters.Values" in s
     assert "ValidateSet" in s or "ValidValues" in s
     # Stays property-access only - no static method call
-    assert "[System." not in s.replace("[System.IO", "_")  # allow comments mentioning System.IO etc - none here
+    assert "[System." not in s.replace(
+        "[System.IO", "_"
+    )  # allow comments mentioning System.IO etc - none here
 
 
 def test_commands_default_filters_function_cmdlet():
@@ -115,17 +126,19 @@ def test_commands_pattern_quoted():
 def test_history_default_path():
     s = J.make_history_script(None)
     assert "ConsoleHost_history.txt" in s
-    # The dead [IO.File]::ReadAllLines fallback should not be there anymore.
-    assert "ReadAllLines" not in s
+    assert "Get-Content -LiteralPath" in s
+    assert "ReadAllLines" in s
 
 
 def test_history_explicit_path():
     s = J.make_history_script("C:\\Windows\\Temp\\h.txt")
     assert "'C:\\Windows\\Temp\\h.txt'" in s
-    assert "ReadAllLines" not in s
+    assert "Get-Content -LiteralPath" in s
+    assert "ReadAllLines" in s
 
 
 # ---------- upload chunk encoding -------------------------------------------
+
 
 def test_upload_init_uses_test_path_and_remove_item():
     s = J._upload_init_script("C:\\Temp\\x.bin")
@@ -138,7 +151,7 @@ def test_upload_init_uses_test_path_and_remove_item():
 
 def test_upload_chunk_first_uses_set_content():
     s = J._upload_chunk_script("C:\\Temp\\x.bin", b"\x01\x02\x03", first=True)
-    assert "Set-Content -Path 'C:\\Temp\\x.bin'" in s
+    assert "Set-Content -LiteralPath 'C:\\Temp\\x.bin'" in s
     assert "[byte[]] @(1,2,3)" in s
     assert "-Encoding Byte" in s
 
@@ -158,6 +171,7 @@ def test_download_script_hex_encodes_per_chunk():
 
 
 # ---------- get_password ----------------------------------------------------
+
 
 def _ns(**kw):
     base = dict(hash=None, password=None, password_env=None, ask_pass=False)
@@ -190,6 +204,7 @@ def test_get_password_falls_back_to_empty():
 
 
 # ---------- argparse wiring -------------------------------------------------
+
 
 def test_argparse_kerberos_is_default():
     parser = J.build_parser()
@@ -247,6 +262,7 @@ def test_main_hash_forces_ntlm(capsys):
 
 # ---------- session retry plumbing -------------------------------------------
 
+
 class _StubStreams:
     def __init__(self):
         self.error = []
@@ -276,6 +292,7 @@ class _StubPS:
 def _patch_pypsrp(monkeypatch, raise_msg=None):
     def loader():
         return None, None, lambda _pool: _StubPS(raise_msg)
+
     monkeypatch.setattr(J, "load_pypsrp", loader)
 
 
@@ -301,12 +318,14 @@ def test_invoke_ps_unrelated_error_does_not_raise_session(monkeypatch, capsys):
 
 # ---------- shell completer --------------------------------------------------
 
+
 def test_shell_builtins_include_proxy():
     assert ":proxy" in J.SHELL_BUILTINS
     assert ":def" in J.SHELL_BUILTINS
 
 
 # ---------- envelope size pre-check -----------------------------------------
+
 
 def test_invoke_ps_refuses_oversized_script(monkeypatch):
     # Set up a stub that would normally invoke fine.
@@ -315,7 +334,10 @@ def test_invoke_ps_refuses_oversized_script(monkeypatch):
     # 50KB script with a 100KB envelope: 50% > 30% threshold → refused.
     big = "x" * 50_000
     rc, lines = J.invoke_ps(
-        None, big, wrapper="none", max_envelope_size=100_000,
+        None,
+        big,
+        wrapper="none",
+        max_envelope_size=100_000,
     )
     assert rc == 1
     assert lines == []
@@ -324,7 +346,10 @@ def test_invoke_ps_refuses_oversized_script(monkeypatch):
 def test_invoke_ps_passes_under_envelope(monkeypatch):
     _patch_pypsrp(monkeypatch, raise_msg=None)
     rc, lines = J.invoke_ps(
-        None, "Get-Process", wrapper="none", max_envelope_size=100_000,
+        None,
+        "Get-Process",
+        wrapper="none",
+        max_envelope_size=100_000,
     )
     assert rc == 0
 
