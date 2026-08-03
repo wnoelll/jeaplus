@@ -529,8 +529,9 @@ def resolve_backend(
         ),
         None,
     )
+    script_modes = {"fulllanguage", "constrainedlanguage"}
     backend = (
-        "script" if rc == 0 and mode is not None and mode.lower() != "nolanguage" else "structured"
+        "script" if rc == 0 and mode is not None and mode.lower() in script_modes else "structured"
     )
     args._resolved_backend = backend
     args._remote_language_mode = mode or "source probe rejected"
